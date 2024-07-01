@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as zlip from "zlib";
-import { createHash, hash } from "crypto";
+import { createHash } from "crypto";
 
 
 const BASE_FOLDER_PATH = path.join(process.cwd(), '.git'); //git folder path base
@@ -27,6 +27,9 @@ switch (command) {
     break;
   case "write-tree":
     returnTreeHash();
+    break;
+  case "commit-tree":
+    commitTree();
     break;
   default:
     throw new Error(`Unknown command ${command}`);
@@ -190,4 +193,65 @@ function returnTreeHash() {
     const treeHash = writeTree();
 
     process.stdout._write(treeHash);
+}
+
+function commitTree() {
+
+    // get treeSha & commitSha & message from input
+    const commands = process.argv
+
+    const treeSha = commands[3];
+    
+    const parent = commands.indexOf('-p');
+    const message = commands.indexOf('-m');
+    let ParentCommitSha;
+    let msgText;
+    
+    if ( parent && commands[parent + 1]) { ParentCommitSha = commands[parent + 1]; }
+    if ( message && commands[message + 1]) { msgText = commands[message + 1]; }
+
+
+
+    function getTimeStamp() {
+        const now = new Date();
+        let timeStamp = -now.getTimezoneOffset();
+        const sign = timeStamp <= 0 ? '-' : '+';
+        timeStamp = Math.abs(timeStamp);
+        const hours = Math.floor(timeStamp/60).toString().padStart(2, '0');
+        const minutes = (timeStamp%60).toString().padStart(2, '0');
+        return `${Math.floor(now.getTime()/1000)} ${sign}${hours}${minutes}`;
+    }
+
+    let content = `tree ${treeSha}\n`;
+    const time = getTimeStamp();
+
+
+    if (ParentCommitSha) content += `parent ${ParentCommitSha}\n`;
+    content += `author Scott Chacon <schacon@gmail.com> ${time}\n`;
+    content += `committer Scott Chacon <schacon@gmail.com> ${time}\n\n`;
+    
+
+
+    if (msgText) content += `${msgText}\n`;
+
+    const header = `commit ${content.length}\0`;
+    
+    // console.log(header + content);
+
+    const commit = Buffer.concat([
+        Buffer.from(header),
+        Buffer.from(content)
+    ]);
+
+    
+
+    const commitHash = createHash('sha1').update(commit).digest('hex');
+
+    console.log(commitHash);
+
+    fs.mkdirSync(path.join(BASE_FOLDER_PATH, 'objects', commitHash.slice(0,2)), { recursive: true });
+    fs.writeFileSync(
+        path.join(BASE_FOLDER_PATH, 'objects', commitHash.slice(0,2), commitHash.slice(2)),
+        zlip.deflateSync(commit)
+    );
 }
