@@ -156,20 +156,22 @@ function writeTree(currentPath = process.cwd()) {
 
     //write the tree object to the .git/objects directory
 
+    //iterate through the array and convert them to a buffer as well as concat those as a single buffer
     const treeData = treeObject.reduce((acc,{mode,name,hash}) => {
         return Buffer.concat([
            acc,
            Buffer.from(`${mode} ${name}\0`),
            Buffer.from(hash,'hex'),
         ]);
-     },Buffer.alloc(0));
+     }, Buffer.alloc(0)); // alloc, initializes the accumulator as an empty buffer
     
 
+     //add the header as a buffer
      const tree = Buffer.concat([
         Buffer.from(`tree ${treeData.length}\0`),
         treeData,
      ]);
-     
+
     
     const treeHash = createHash('sha1').update(tree).digest('hex');
     
