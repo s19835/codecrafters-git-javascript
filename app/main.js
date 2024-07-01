@@ -19,13 +19,14 @@ switch (command) {
     readBlob();
     break;
   case "hash-object":
-    writeBolb();
+    const hash = writeBolb();
+    process.stdout._write(hash);
     break;
   case "ls-tree":
     readTree();
     break;
   case "write-tree":
-    writeTree();
+    returnTreeHash();
     break;
   default:
     throw new Error(`Unknown command ${command}`);
@@ -81,8 +82,6 @@ function writeBolb() {
     const hash = createHash('sha1').update(shaData).digest('hex');
 
 
-    process.stdout._write(hash);
-
     // if flag is specified as w then write the file in to the folder
     if (flag === '-w') {
         //following code will create the directory
@@ -94,6 +93,8 @@ function writeBolb() {
             zlip.deflateSync(shaData)
         );
     }
+
+    return hash;
 }
 
 
@@ -117,7 +118,7 @@ function readTree() {
             fileNames.push(name.split('\0')[0]);
         });
         
-        fileNames.forEach(fileName => process.stdout._write(fileName, '\n'));
+        fileNames.forEach(fileName => console.log(fileName));
     }
 }
 
@@ -125,12 +126,6 @@ function writeTree(currentPath = process.cwd()) {
 
     let workingDir = fs.readdirSync(currentPath).filter(item => item !== '.git');
     let treeObject = [];
-
-
-    function getSHA(file) {
-        const hash = createHash('sha1').update(file).digest('binary');
-        return hash;
-    }
 
     //Iterate over the files/directories in the working directory
     workingDir.forEach(content => {
@@ -143,7 +138,7 @@ function writeTree(currentPath = process.cwd()) {
             treeObject.push({
                 mode: '100644',
                 name: content,
-                hash: getSHA(content)
+                hash: writeBolb(process.argv[4] = entryPath, flag = '')
             })
         } 
         
@@ -151,32 +146,33 @@ function writeTree(currentPath = process.cwd()) {
         else if (stat.isDirectory()) {
             
             treeObject.push({
-                mode: '040000',
+                mode: '40000',
                 name: content,
-                hash: getSHA(content)
+                hash: writeTree(entryPath)
             })
-            
-            //process.chdir(content);
         }
         
     });
 
     //write the tree object to the .git/objects directory
 
-    //tree <size>\0<mode> <name>\0<20_byte_sha><mode> <name>\0<20_byte_sha>
-    let tree ='';
+    const treeData = treeObject.reduce((acc,{mode,name,hash}) => {
+        return Buffer.concat([
+           acc,
+           Buffer.from(`${mode} ${name}\0`),
+           Buffer.from(hash,'hex'),
+        ]);
+     },Buffer.alloc(0));
     
 
-    treeObject.forEach(object => {
-        tree += `${object.mode} ${object.name}\0${object.hash}`;
-    });
-    
-
-    const header = `tree ${tree.length}\0`;
-    tree = header + tree;
+     const tree = Buffer.concat([
+        Buffer.from(`tree ${treeData.length}\0`),
+        treeData,
+     ]);
+     
     
     const treeHash = createHash('sha1').update(tree).digest('hex');
-    process.stdout._write(treeHash);
+    
 
     fs.mkdirSync(path.join(BASE_FOLDER_PATH, 'objects', treeHash.slice(0,2)), { recursive: true });
 
@@ -184,5 +180,12 @@ function writeTree(currentPath = process.cwd()) {
         path.join(BASE_FOLDER_PATH, 'objects', treeHash.slice(0,2), treeHash.slice(2)), 
         zlip.deflateSync(tree)      
     );
+    
+    return treeHash;
+}
 
+function returnTreeHash() {
+    const treeHash = writeTree();
+
+    process.stdout._write(treeHash);
 }
